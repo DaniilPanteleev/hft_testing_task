@@ -1,0 +1,23 @@
+group = 'com.todo'
+version = '1.0'
+
+allprojects {
+    repositories {
+        mavenCentral()
+    }
+}
+
+subprojects {
+    apply plugin: 'java'
+
+    java {
+        toolchain {
+            languageVersion.set(JavaLanguageVersion.of("$projectJavaVersion"))
+        }
+    }
+
+    dependencies {
+        // Docker
+        implementation "org.testcontainers:junit-jupiter:$testcontainersVersion"
+    }
+}

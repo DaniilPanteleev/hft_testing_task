@@ -1,0 +1,189 @@
+plugins {
+    id 'java'
+    id "io.qameta.allure" version "$alurePluginVersion"
+    id "org.springframework.boot" version "$springBootVersion"
+    id "io.spring.dependency-management" version "$springDepManagerVersion"
+    id "org.openapi.generator" version "$openapiGeneratorVersion"
+}
+
+allure {
+    version = "$allureVersion"
+
+}
+
+sourceSets {
+    main.java.srcDirs += "build/generated/sources/swagger/todo/src/main/java"
+}
+
+configurations {
+    compileOnly {
+        extendsFrom annotationProcessor
+    }
+    all*.exclude module: 'spring-boot-starter-logging'
+}
+
+dependencies {
+
+    //lombok
+    compileOnly "org.projectlombok:lombok:$lombokVersion"
+    annotationProcessor "org.projectlombok:lombok:$lombokVersion"
+    testCompileOnly "org.projectlombok:lombok:$lombokVersion"
+    testAnnotationProcessor "org.projectlombok:lombok:$lombokVersion"
+
+    // swagger coverage
+    implementation "com.github.viclovsky:swagger-coverage-rest-assured:$swCoverageVersion"
+
+    // spring
+    annotationProcessor "org.springframework.boot:spring-boot-configuration-processor"
+    implementation "org.springframework.boot:spring-boot-starter-data-jpa"
+    testImplementation("org.springframework.boot:spring-boot-starter-test") {
+        exclude group: "org.junit.platform"
+    }
+
+    // rest
+    implementation "io.rest-assured:rest-assured:$restAssuredVersion"
+    implementation "io.rest-assured:rest-assured-all:$restAssuredVersion"
+    implementation "io.rest-assured:json-schema-validator:$restAssuredVersion"
+    implementation("io.qameta.allure:allure-rest-assured:$allureVersion")
+    implementation("io.swagger:swagger-annotations:$swaggerVersion")
+    implementation("io.swagger:swagger-models:$swaggerVersion")
+    implementation("io.swagger.core.v3:swagger-models:$swaggervV3Version")
+
+    //jackson
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jacksonDataTypeVersion")
+    implementation("org.openapitools:jackson-databind-nullable:$jacksonDataBindVersion")
+    implementation("com.google.code.findbugs:jsr305:$jsr305Version")
+
+    //test
+    implementation "org.assertj:assertj-core:$assertJVersion"
+    testImplementation "org.junit.jupiter:junit-jupiter-api:$junitJupiterVersion"
+    implementation "org.junit.jupiter:junit-jupiter-api:$junitJupiterVersion"
+    testImplementation "org.junit.jupiter:junit-jupiter:$junitJupiterVersion"
+    implementation "com.github.javafaker:javafaker:$fakerVersion"
+    implementation "org.awaitility:awaitility:$awaitilityVersion"
+    testImplementation "io.qameta.allure:allure-junit5:$allureVersion"
+
+    //Logging
+    implementation "org.apache.logging.log4j:log4j-core:$log4jVersion"
+    implementation "org.apache.logging.log4j:log4j-api:$log4jVersion"
+    implementation "org.apache.logging.log4j:log4j-iostreams:$log4jVersion"
+    implementation "org.apache.logging.log4j:log4j-slf4j-impl:$log4jVersion"
+    implementation "org.apache.logging.log4j:log4j-1.2-api:$log4jVersion"
+}
+
+configurations.all {
+    exclude group: 'ch.qos.logback', module: 'logback-classic'
+}
+
+test {
+    ignoreFailures = true
+    testLogging.showStandardStreams = false
+    systemProperties = System.properties
+    var tags = System.getProperty("includeTags", "regression");
+    useJUnitPlatform() {
+        includeTags tags
+    }
+}
+
+compileJava {
+    options.encoding = 'UTF-8'
+    dependsOn tasks.openApiGenerate
+}
+
+openApiGenerate {
+    logging.captureStandardOutput(LogLevel.INFO)
+    inputSpec.set("$rootDir/swagger/todo-service-swagger.yml")
+    outputDir.set("$buildDir/generated/sources/swagger/todo")
+    generateApiTests.set(false)
+    skipValidateSpec.set(true)
+    generatorName.set("java")
+    apiPackage.set("todo-core-openapi.api")
+    invokerPackage.set("todo-core-openapi.invoker")
+    modelPackage.set("todo-core-openapi.model")
+    library.set("rest-assured")
+    generateModelDocumentation.set(false)
+    generateApiDocumentation.set(false)
+    configOptions.set(["serializationLibrary": "jackson", "dateLibrary": "java8"])
+    typeMappings.put("string+date-time", "String")
+}
+
+tasks.register('downloadSwaggerCoverageCommandline') {
+    doLast {
+        def swaggerCoverageUrl = "https://github.com/viclovsky/swagger-coverage/releases/download/${swCoverageVersion}/swagger-coverage-${swCoverageVersion}.zip"
+        def outputDir = file("$buildDir/swagger-coverage")
+        def zipFile = file("$buildDir/swagger-coverage.zip")
+
+        new URL(swaggerCoverageUrl).withInputStream { i ->
+            zipFile.withOutputStream { it << i }
+        }
+
+        copy {
+            from zipTree(zipFile)
+            into outputDir
+        }
+
+        println "Swagger Coverage Commandline downloaded and extracted in $outputDir"
+    }
+}
+
+tasks.register('moveSwaggerReportFiles', Copy) {
+    def outputDir = "$projectDir"
+    def buildDirTarget = "$buildDir/reports/swagger-coverage-report"
+
+    from(outputDir)
+    into(buildDirTarget)
+    include('swagger-coverage*')
+
+    doLast {
+        println "Swagger Coverage Report files moved to: $buildDirTarget"
+    }
+}
+
+tasks.register('generateSwaggerCoverageReport', Exec) {
+    dependsOn('downloadSwaggerCoverageCommandline')
+
+    def outputDir = "$buildDir/swagger-coverage-output"
+    def swaggerSpecPath = "$buildDir/generated/sources/swagger/todo/api/openapi.yaml"
+    def commandlineDir = "$buildDir/swagger-coverage/swagger-coverage-commandline-$swCoverageVersion/bin"
+
+    onlyIf {
+        def dirExists = file(outputDir).exists()
+        if (!dirExists) {
+            println "Dir $outputDir doesn't exists. Skip task generateSwaggerCoverageReport."
+        }
+        return dirExists
+    }
+
+    commandLine "$commandlineDir/swagger-coverage-commandline", "-s", swaggerSpecPath, "-i", outputDir
+    doLast {
+        println "Swagger Coverage Report generated in folder: $outputDir"
+    }
+}
+
+tasks.register('serveReports', Exec) {
+    def host = "http://127.0.0.1"
+    def port = "5555"
+    def url = "$host:$port"
+
+    def swaggerCoveragePath = "$url/build/reports/swagger-coverage-report/swagger-coverage-report.html"
+    def allurePath = "$url/build/reports/allure-report/allureReport/index.html#"
+
+    commandLine "python3", "-m", "http.server", "$port"
+
+    doFirst {
+        println "✅ Swagger Coverage Report awailable at:\n$swaggerCoveragePath"
+        println "\n\n✅ Allure Report awailable at:\n$allurePath \n\n"
+    }
+}
+
+tasks.register('generateAndMoveSwaggerReport') {
+    dependsOn 'generateSwaggerCoverageReport', 'moveSwaggerReportFiles', 'allureReport'
+}
+
+tasks.named('moveSwaggerReportFiles').configure {
+    dependsOn tasks.named('generateSwaggerCoverageReport'), tasks.named('allureReport')
+}
+
+tasks.named('serveReports').configure {
+    dependsOn tasks.named('generateAndMoveSwaggerReport')
+}

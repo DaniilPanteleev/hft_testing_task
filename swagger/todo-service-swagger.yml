@@ -1,0 +1,122 @@
+openapi: 3.0.0
+info:
+  title: TODO API
+  description: API for managing a list of TODO tasks.
+  version: 1.0.0
+servers:
+  - url: http://localhost:4242
+    description: Local server
+
+components:
+  schemas:
+    TODO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Unique identifier for the TODO task
+          example: 12345
+        text:
+          type: string
+          description: Description of the TODO task
+          example: "Buy milk"
+        completed:
+          type: boolean
+          description: Whether the task is completed or not
+          example: false
+  securitySchemes:
+    BasicAuth:
+      type: http
+      scheme: basic
+
+security:
+  - BasicAuth: [ ]
+
+paths:
+  /todos:
+    get:
+      summary: Retrieve list of TODOs
+      description: Returns a list of TODO tasks with pagination options.
+      parameters:
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            default: 0
+          description: Number of TODOs to skip.
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 10
+          description: Maximum number of TODOs to return.
+      responses:
+        '200':
+          description: List of TODO tasks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TODO'
+
+    post:
+      summary: Create a new TODO
+      description: Creates a new TODO task with the provided structure.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TODO'
+      responses:
+        '201':
+          description: TODO created successfully
+        '400':
+          description: Invalid request
+
+  /todos/{id}:
+    put:
+      summary: Update an existing TODO
+      description: Updates the TODO task with the specified `id`.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: Unique identifier for the TODO task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TODO'
+      responses:
+        '200':
+          description: TODO updated successfully
+        '404':
+          description: TODO not found
+        '400':
+          description: Invalid request
+
+    delete:
+      summary: Delete a TODO
+      description: Deletes the TODO task with the specified `id`. Requires authorization using Basic Auth.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+          description: Unique identifier for the TODO task
+      security:
+        - BasicAuth: [ ]
+      responses:
+        '204':
+          description: TODO deleted successfully
+        '404':
+          description: TODO not found
+        '401':
+          description: Unauthorized
