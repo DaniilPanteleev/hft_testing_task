@@ -33,7 +33,10 @@
 
 ## How to run?
 
-**NOTE:** docker is required!
+**NOTE:** Required libs:
+
+1. docker
+2. python3
 
 ```bash
 ./run_tests.sh
